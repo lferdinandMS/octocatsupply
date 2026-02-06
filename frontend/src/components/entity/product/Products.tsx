@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useQuery } from 'react-query';
 import { api } from '../../../api/config';
@@ -26,14 +26,97 @@ export default function Products() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const { data: products, isLoading, error } = useQuery('products', fetchProducts);
   const { darkMode } = useTheme();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
 
   const filteredProducts = products?.filter(
     (product) =>
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+
+  // Get autocomplete suggestions (up to 5 matches)
+  const autocompleteSuggestions =
+    searchTerm.length >= 2
+      ? products
+          ?.filter(
+            (product) =>
+              product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              product.description.toLowerCase().includes(searchTerm.toLowerCase()),
+          )
+          .slice(0, 5) || []
+      : [];
+
+  // Handle clicking outside autocomplete to close it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        autocompleteRef.current &&
+        !autocompleteRef.current.contains(event.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowAutocomplete(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showAutocomplete || autocompleteSuggestions.length === 0) {
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSuggestionIndex((prev) =>
+          prev < autocompleteSuggestions.length - 1 ? prev + 1 : prev,
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSuggestionIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedSuggestionIndex >= 0) {
+          const selectedProduct = autocompleteSuggestions[selectedSuggestionIndex];
+          setSearchTerm(selectedProduct.name);
+          setShowAutocomplete(false);
+          setSelectedSuggestionIndex(-1);
+        }
+        break;
+      case 'Escape':
+        setShowAutocomplete(false);
+        setSelectedSuggestionIndex(-1);
+        break;
+    }
+  };
+
+  // Handle suggestion click
+  const handleSuggestionClick = (product: Product) => {
+    setSearchTerm(product.name);
+    setShowAutocomplete(false);
+    setSelectedSuggestionIndex(-1);
+  };
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    setShowAutocomplete(value.length >= 2);
+    setSelectedSuggestionIndex(-1);
+  };
 
   // Inconsistent loop direction example: process products in reverse incorrectly
   if (filteredProducts && filteredProducts.length === 0) {
@@ -106,12 +189,18 @@ export default function Products() {
 
           <div className="relative">
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Search products..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={handleSearchChange}
+              onKeyDown={handleKeyDown}
+              onFocus={() => searchTerm.length >= 2 && setShowAutocomplete(true)}
               className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-800 text-light border-gray-700' : 'bg-white text-gray-800 border-gray-300'} rounded-lg border focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors duration-300`}
               aria-label="Search products"
+              aria-autocomplete="list"
+              aria-controls="autocomplete-suggestions"
+              aria-expanded={showAutocomplete && autocompleteSuggestions.length > 0}
             />
             <svg
               className={`absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'} transition-colors duration-300`}
@@ -124,6 +213,52 @@ export default function Products() {
             >
               <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
+
+            {/* Autocomplete Dropdown */}
+            {showAutocomplete && autocompleteSuggestions.length > 0 && (
+              <div
+                ref={autocompleteRef}
+                id="autocomplete-suggestions"
+                role="listbox"
+                className={`absolute z-10 w-full mt-1 ${
+                  darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'
+                } border rounded-lg shadow-lg max-h-80 overflow-y-auto transition-colors duration-300`}
+              >
+                {autocompleteSuggestions.map((product, index) => (
+                  <div
+                    key={product.productId}
+                    role="option"
+                    aria-selected={index === selectedSuggestionIndex}
+                    onClick={() => handleSuggestionClick(product)}
+                    className={`px-4 py-3 cursor-pointer transition-colors duration-200 ${
+                      index === selectedSuggestionIndex
+                        ? darkMode
+                          ? 'bg-gray-700'
+                          : 'bg-gray-100'
+                        : darkMode
+                          ? 'hover:bg-gray-700'
+                          : 'hover:bg-gray-100'
+                    } ${index > 0 ? (darkMode ? 'border-t border-gray-700' : 'border-t border-gray-200') : ''}`}
+                  >
+                    <div
+                      className={`font-semibold ${darkMode ? 'text-light' : 'text-gray-800'} transition-colors duration-300`}
+                    >
+                      {product.name}
+                    </div>
+                    <div
+                      className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'} transition-colors duration-300 line-clamp-2`}
+                    >
+                      {product.description}
+                    </div>
+                    <div
+                      className={`text-sm mt-1 font-medium text-primary`}
+                    >
+                      ${product.price.toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Empty state when no products match */}
