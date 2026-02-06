@@ -33,23 +33,24 @@ export default function Products() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<HTMLDivElement>(null);
 
-  const filteredProducts = products?.filter(
-    (product) =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  // Filter products based on search term
+  const filterProducts = (productList: Product[] | undefined, term: string) => {
+    if (!productList) {
+      return [];
+    }
+    const lowerTerm = term.toLowerCase();
+    return productList.filter(
+      (product) =>
+        product.name.toLowerCase().includes(lowerTerm) ||
+        product.description.toLowerCase().includes(lowerTerm),
+    );
+  };
+
+  const filteredProducts = filterProducts(products, searchTerm);
 
   // Get autocomplete suggestions (up to 5 matches)
   const autocompleteSuggestions =
-    searchTerm.length >= 2
-      ? products
-          ?.filter(
-            (product) =>
-              product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              product.description.toLowerCase().includes(searchTerm.toLowerCase()),
-          )
-          .slice(0, 5) || []
-      : [];
+    searchTerm.length >= 2 ? filterProducts(products, searchTerm).slice(0, 5) : [];
 
   // Handle clicking outside autocomplete to close it
   useEffect(() => {
